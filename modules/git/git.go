@@ -174,6 +174,9 @@ func InitFull() (err error) {
 	if err = InitSimple(); err != nil {
 		return err
 	}
+	if gnupgHome := filepath.Join(gitcmd.HomeDir(), ".gnupg"); os.Getenv("GNUPGHOME") == gnupgHome {
+		removeStaleKeyboxdLock(gnupgHome)
+	}
 	return syncGitConfig(context.Background())
 }
 
