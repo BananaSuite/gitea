@@ -42,6 +42,8 @@ func hookPostReceiveCollectPushUpdates(opts *private.HookOptions, repo *repo_mod
 				PusherName:   opts.UserName,
 				RepoUserName: repo.OwnerName,
 				RepoName:     repo.Name,
+
+				PullRequestID: opts.PullRequestID,
 			}
 			updates = append(updates, option)
 		}
@@ -49,7 +51,7 @@ func hookPostReceiveCollectPushUpdates(opts *private.HookOptions, repo *repo_mod
 	return updates
 }
 
-func hookPostReceiveSyncDatabaseBranches(ctx *gitea_context.PrivateContext, opts *private.HookOptions, repo *repo_model.Repository, updates []*repo_module.PushUpdateOptions) {
+func hookPostReceiveSyncDatabaseBranches(ctx *gitea_context.PrivateContext, repo *repo_model.Repository, updates []*repo_module.PushUpdateOptions) {
 	branchNames := make([]string, 0, len(updates))
 	for _, update := range updates {
 		if !update.RefFullName.IsBranch() {
@@ -57,7 +59,7 @@ func hookPostReceiveSyncDatabaseBranches(ctx *gitea_context.PrivateContext, opts
 		}
 		branchNames = append(branchNames, update.RefFullName.BranchName())
 		if !update.IsDelRef() {
-			pull_service.UpdatePullsRefs(ctx, repo, update)
+			pull_service.UpdatePullsRefs(ctx, ctx.Doer, repo, update)
 		}
 	}
 
@@ -71,7 +73,7 @@ func hookPostReceiveSyncDatabaseBranches(ctx *gitea_context.PrivateContext, opts
 		return
 	}
 
-	if err = repo_service.SyncBranchesToDB(ctx, repo, opts.UserID, gitRepo, branchNames); err != nil {
+	if err = repo_service.SyncBranchesToDB(ctx, repo, ctx.Doer.ID, gitRepo, branchNames); err != nil {
 		log.Error("failed to sync branch to DB: %v", err)
 	}
 }
@@ -83,6 +85,9 @@ func HookPostReceive(ctx *gitea_context.PrivateContext) {
 		setting.PanicInDevOrTesting("wiki hook-post-receive is not supported")
 		return
 	}
+	if !loadContextDoerPermission(ctx, opts.UserID, opts.UserExtDoerData) {
+		return
+	}
 
 	// In the post-receive hook, the git repo has received all changes,
 	// So even if any error happens, nothing can be stopped or undone, so the errors should be skipped
@@ -90,7 +95,7 @@ func HookPostReceive(ctx *gitea_context.PrivateContext) {
 	wasEmpty := repo.IsEmpty
 	updates := hookPostReceiveCollectPushUpdates(opts, repo)
 	hookPostReceiveUpdateRepoByOptions(ctx, opts, repo) // push options are only honored while the repo is still empty
-	hookPostReceiveSyncDatabaseBranches(ctx, opts, repo, updates)
+	hookPostReceiveSyncDatabaseBranches(ctx, repo, updates)
 
 	// handle async updates (e.g.: notification, cache management, repo update time, etc.)
 	if err := repo_service.PushUpdates(updates...); err != nil {
@@ -109,10 +114,6 @@ func hookPostReceiveUpdateRepoByOptions(ctx *gitea_context.PrivateContext, opts 
 	isTemplate := opts.GitPushOptions.Bool(private.GitPushOptionRepoTemplate)
 	// Handle Push Options
 	if !isPrivate.Has() && !isTemplate.Has() {
-		return
-	}
-
-	if !loadContextDoerPermission(ctx, opts.UserID, opts.UserExtDoerData) {
 		return
 	}
 
