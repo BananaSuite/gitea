@@ -1,5 +1,5 @@
+import {showModal} from '../../modules/modal.ts';
 import {registerGlobalEventFunc, registerGlobalInitFunc} from '../../modules/observer.ts';
-import {POST} from '../../modules/fetch.ts';
 import {queryElems, toggleElem} from '../../utils/dom.ts';
 
 function initCompWebHookEditorForm(el: HTMLElement) {
@@ -32,15 +32,12 @@ function initCompWebHookEditorForm(el: HTMLElement) {
   }
 }
 
-function initCompWebHookEditorHistory() {
-  registerGlobalEventFunc('click', 'onWebhookTestDeliveryClick', async (el) => {
-    el.classList.add('is-loading', 'disabled');
-    await POST(el.getAttribute('data-link')!);
-    setTimeout(() => window.location.reload(), 5000);
-  });
-}
-
 export function initCompWebHookEditor() {
   registerGlobalInitFunc('initCompWebHookEditorForm', initCompWebHookEditorForm);
-  initCompWebHookEditorHistory();
+  registerGlobalEventFunc('click', 'onWebhookDeliveryDetailsClick', (button) => {
+    const row = button.closest('.item')!;
+    const template = row.querySelector('template')!;
+    const dialog = document.importNode(template.content.querySelector('dialog')!, true);
+    showModal(dialog, {onHidden: () => dialog.remove()});
+  });
 }
